@@ -1,6 +1,8 @@
 package com.jwtbreaker;
 
 import burp.api.montoya.MontoyaApi;
+import burp.api.montoya.http.message.HttpHeader;
+import burp.api.montoya.http.message.requests.HttpRequest;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -17,6 +19,8 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -94,13 +98,26 @@ public class JwtBreakerPanel extends JPanel {
         JButton algNoneBtn = new JButton("Test alg:none");
         JButton bruteBtn = new JButton("Brute-force Weak Secret");
         JButton expiryBtn = new JButton("Check Expiry");
+        JButton repeaterBtn = new JButton("Send to Repeater");
+        JButton copyBtn = new JButton("Copy Token");
+
+        algNoneBtn.setToolTipText("Generate an alg:none version of the selected token");
+        bruteBtn.setToolTipText("Try to crack the HMAC-SHA256 signing key using secrets.txt");
+        expiryBtn.setToolTipText("Inspect the exp claim of the selected token");
+        repeaterBtn.setToolTipText("Send the selected request with the generated alg:none token to Repeater");
+        copyBtn.setToolTipText("Copy the generated token to the clipboard");
+
         buttons.add(algNoneBtn);
         buttons.add(bruteBtn);
         buttons.add(expiryBtn);
+        buttons.add(repeaterBtn);
+        buttons.add(copyBtn);
 
         algNoneBtn.addActionListener(e -> testAlgNone());
         bruteBtn.addActionListener(e -> bruteForceSecret());
         expiryBtn.addActionListener(e -> checkExpiry());
+        repeaterBtn.addActionListener(e -> sendToRepeater());
+        copyBtn.addActionListener(e -> copyToken());
 
         resultArea = new JTextArea(6, 40);
         resultArea.setEditable(false);
@@ -300,6 +317,59 @@ public class JwtBreakerPanel extends JPanel {
         } catch (Exception ex) {
             setStatus("Error checking expiry: " + ex.getMessage(), VULN_RED);
         }
+    }
+
+    // ---- Phase 4: Repeater + clipboard -------------------------------------
+
+    private void sendToRepeater() {
+        JwtEntry entry = requireSelection();
+        if (entry == null) {
+            return;
+        }
+        if (lastGeneratedToken == null) {
+            setStatus("Generate an alg:none token first (Test alg:none).", VULN_RED);
+            return;
+        }
+        try {
+            HttpRequest modified = buildRequestWithToken(entry, lastGeneratedToken);
+            api.repeater().sendToRepeater(modified, "JWTBreaker alg:none");
+            setStatus("[INFO] Sent modified request to Repeater (tab: JWTBreaker alg:none).",
+                    SECURE_GREEN);
+        } catch (Exception ex) {
+            setStatus("Failed to send to Repeater: " + ex.getMessage(), VULN_RED);
+        }
+    }
+
+    /** Rebuilds the request with the original JWT replaced by the new one. */
+    private HttpRequest buildRequestWithToken(JwtEntry entry, String newToken) {
+        HttpRequest request = entry.request();
+        String headerName = entry.source().startsWith("Authorization") ? "Authorization" : "Cookie";
+        String currentValue = headerValue(request, headerName);
+        if (currentValue == null) {
+            // Header gone; just return original request unchanged.
+            return request;
+        }
+        String newValue = currentValue.replace(entry.token(), newToken);
+        return request.withUpdatedHeader(headerName, newValue);
+    }
+
+    private String headerValue(HttpRequest request, String name) {
+        for (HttpHeader h : request.headers()) {
+            if (h.name().equalsIgnoreCase(name)) {
+                return h.value();
+            }
+        }
+        return null;
+    }
+
+    private void copyToken() {
+        if (lastGeneratedToken == null) {
+            setStatus("No generated token to copy. Run Test alg:none first.", VULN_RED);
+            return;
+        }
+        Toolkit.getDefaultToolkit().getSystemClipboard()
+                .setContents(new StringSelection(lastGeneratedToken), null);
+        setStatus("[INFO] Generated token copied to clipboard.", SECURE_GREEN);
     }
 
     // ---- helpers -----------------------------------------------------------
