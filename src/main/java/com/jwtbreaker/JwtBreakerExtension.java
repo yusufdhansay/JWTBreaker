@@ -4,16 +4,11 @@ import burp.api.montoya.BurpExtension;
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.extension.ExtensionUnloadingHandler;
 
-import javax.swing.JLabel;
-import javax.swing.JPanel;
-import javax.swing.SwingConstants;
-import java.awt.BorderLayout;
-
 /**
  * JWTBreaker - Burp Suite extension for inspecting and attacking JSON Web Tokens.
  *
- * Phase 1: basic skeleton. Registers the extension, logs a load message and
- * adds a "JWTBreaker" suite tab with a placeholder label.
+ * Auto-detects JWTs in outgoing requests (Authorization header / session cookie),
+ * decodes them, and exposes attack tooling in a dedicated suite tab.
  */
 public class JwtBreakerExtension implements BurpExtension, ExtensionUnloadingHandler {
 
@@ -26,11 +21,10 @@ public class JwtBreakerExtension implements BurpExtension, ExtensionUnloadingHan
         api.extension().setName("JWTBreaker");
         api.extension().registerUnloadingHandler(this);
 
-        JPanel panel = new JPanel(new BorderLayout());
-        JLabel label = new JLabel("JWTBreaker Loaded", SwingConstants.CENTER);
-        panel.add(label, BorderLayout.CENTER);
-
+        JwtBreakerPanel panel = new JwtBreakerPanel(api);
         api.userInterface().registerSuiteTab("JWTBreaker", panel);
+
+        api.http().registerHttpHandler(new JwtHttpHandler(api, panel));
 
         api.logging().logToOutput("JWTBreaker Loaded");
     }
