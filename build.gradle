@@ -9,6 +9,11 @@ repositories {
     mavenCentral()
 }
 
+// Bundle the weak-secret wordlist into the jar so brute-force works at runtime.
+processResources {
+    from('secrets.txt')
+}
+
 // Target Java 17 bytecode. Uses --release so it works even when only a newer
 // JDK (e.g. 23) is installed.
 tasks.withType(JavaCompile).configureEach {

