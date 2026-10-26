@@ -1,5 +1,8 @@
 plugins {
     id 'java'
+    // Maintained successor of com.github.johnrengelman.shadow (which fails on
+    // Java 21+). Provides the same `shadowJar` task to build a fat jar.
+    id 'com.gradleup.shadow' version '8.3.6'
 }
 
 group = 'com.jwtbreaker'
@@ -31,4 +34,11 @@ dependencies {
 
     // JSON pretty printing
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
+}
+
+// Build a single self-contained jar: build/libs/JWTBreaker-all.jar
+shadowJar {
+    archiveBaseName = 'JWTBreaker'
+    archiveClassifier = 'all'
+    archiveVersion = ''
 }
